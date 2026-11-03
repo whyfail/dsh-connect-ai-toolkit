@@ -2,7 +2,7 @@
   "name": "dsh-connect-ai-toolkit",
   "displayName": "DSH Connect AI-Toolkit",
   "description": "DSH plugin connecting WorkBuddy, TRAE and Qoder models through the AI-Toolkit local proxy, with automatic discovery and one model selector.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "author": "whyfail",
   "license": "MIT",
   "type": "module",

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.4 — 2026-11-03
+
+### Fixes
+
+- Coalesce source credential reads across plugin installation, activation, and module hot reload in the same host process.
+- Preserve cancelled/denied authorization across replaced runtimes and retry only after an explicit user action.
+- Require successful catalog authentication before automatic source-key recovery, including staggered plugin instances; coalesce key-rotation recovery by credential generation.
+- Keep a pending macOS authorization attached to its native read instead of restarting it after a JavaScript timeout.
+- Reuse the proxy key across port changes and validate it against the newly configured endpoint.
+
+### Validation
+
+- Pass types, 101 automated tests, host/client builds, and package installation checks.
+- Keep credentials in host memory only; no credential persistence or AI-Toolkit changes are introduced.
+
 ## 0.2.3 — 2026-11-03
 
 First public release.
