@@ -1,0 +1,109 @@
+{
+  "name": "dsh-connect-ai-toolkit",
+  "displayName": "DSH Connect AI-Toolkit",
+  "description": "DSH plugin connecting WorkBuddy, TRAE and Qoder models through the AI-Toolkit local proxy, with automatic discovery and one model selector.",
+  "version": "0.2.3",
+  "author": "whyfail",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0 <25"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "icons",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/assets",
+    "docs/VALIDATION.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "ai-toolkit",
+    "model-provider",
+    "openai-compatible"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:package": "node scripts/package-smoke.mjs",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "prepack": "npm run build",
+    "preview": "vite --config preview/vite.config.ts --host 127.0.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.3 || 0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@earendil-works/pi-ai": "^1.1.0",
+    "react": "^18.3.1"
+  },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "2.1.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.5",
+    "@types/node": "^24.0.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "jsdom": "^26.1.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsdown": "0.22.2",
+    "typescript": "5.9.3",
+    "vite": "^7.2.0",
+    "vitest": "^4.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "icon": "icons/ai-toolkit.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whyfail/dsh-connect-ai-toolkit.git"
+  },
+  "homepage": "https://github.com/whyfail/dsh-connect-ai-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/whyfail/dsh-connect-ai-toolkit/issues"
+  }
+}
