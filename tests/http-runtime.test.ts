@@ -3,11 +3,13 @@ import { createServer, type Server } from 'node:http'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { ToolkitRuntime } from '../src/runtime.ts'
 import { createLoopbackFetch, normalizeBaseURL, parseModels } from '../src/http.ts'
 import { defaultSettings, PROVIDER_ID, type ModelSelection } from '../src/shared.ts'
 import { ConfigStore, validateSettings } from '../src/config.ts'
-import { DiscoveryError, type DiscoveredConnection } from '../src/discovery.ts'
+import { DiscoveryError, type CredentialRequest, type DiscoveredConnection } from '../src/discovery.ts'
+import { readSharedCredential, type CredentialSourceResult } from '../src/credential-session.ts'
 
 const cleanup: Array<() => Promise<unknown> | void> = []
 afterEach(async () => { for (const f of cleanup.splice(0).reverse()) await f() })
@@ -39,6 +41,14 @@ async function runtime(discovery: () => Promise<DiscoveredConnection>, chosen = 
   await value.start()
   return value
 }
+function sharedDiscovery(baseURL: string, source: () => Promise<CredentialSourceResult>) {
+  const scope = randomUUID()
+  return vi.fn(async (request: CredentialRequest = {}): Promise<DiscoveredConnection> => {
+    const result = await readSharedCredential(scope, source, { retry: request.retry, rejectedGeneration: request.rejectedCredential?.generation })
+    if (!result.ok) throw new DiscoveryError(result.code, result.message)
+    return { baseURL, apiKey: result.key, credential: { scope, generation: result.generation, fresh: result.fresh } }
+  })
+}
 
 describe('proxy boundary', () => {
   it('normalizes local roots but rejects remote addresses and embedded credentials', () => {
@@ -63,6 +73,106 @@ describe('proxy boundary', () => {
 })
 
 describe('automatic runtime', () => {
+  it('shares one authorization across concurrently started and replaced plugin runtimes', async () => {
+    const { fixture, baseURL } = await gateway()
+    const source = vi.fn(async (): Promise<CredentialSourceResult> => {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return { ok: true, key: fixture.key }
+    })
+    const discovery = sharedDiscovery(baseURL, source)
+    const [first, second] = await Promise.all([runtime(discovery), runtime(discovery)])
+    expect(first.getState().status).toBe('connected')
+    expect(second.getState().status).toBe('connected')
+    first.dispose()
+    const replacement = await runtime(discovery)
+    expect(replacement.getState().status).toBe('connected')
+    expect(source).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reauthorize a freshly read but rejected key during first installation', async () => {
+    const { fixture, baseURL } = await gateway()
+    let key = 'stale-initial-source-key'
+    const source = vi.fn(async (): Promise<CredentialSourceResult> => ({ ok: true, key }))
+    const discovery = sharedDiscovery(baseURL, source)
+    const first = await runtime(discovery)
+    expect(first.getState().status).toBe('unauthorized')
+    const replacement = await runtime(discovery)
+    await replacement.refresh(false)
+    expect(replacement.getState().status).toBe('unauthorized')
+    expect(source).toHaveBeenCalledTimes(1)
+    key = fixture.key
+    expect((await replacement.refresh()).status).toBe('connected')
+    expect(source).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not reauthorize a late-starting runtime before the first credential generation is validated', async () => {
+    let modelsCalls = 0
+    let releaseFirst!: () => void
+    let firstRequestSeen!: () => void
+    const firstResponse = new Promise<void>(resolve => { releaseFirst = resolve })
+    const firstSeen = new Promise<void>(resolve => { firstRequestSeen = resolve })
+    const server = createServer(async (req, res) => {
+      res.setHeader('content-type', 'application/json')
+      if (req.url === '/health') { res.end('{"status":"ok"}'); return }
+      modelsCalls++
+      if (modelsCalls === 1) {
+        firstRequestSeen()
+        await firstResponse
+      }
+      res.writeHead(401)
+      res.end('{"error":{"code":"invalid_api_key"}}')
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()) }))
+    const baseURL = `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`
+    const source = vi.fn(async (): Promise<CredentialSourceResult> => ({ ok: true, key: 'stale-source-key-before-first-validation' }))
+    const discovery = sharedDiscovery(baseURL, source)
+    const first = new ToolkitRuntime({ directory: await directory(), discover: discovery, selection: selection() })
+    cleanup.push(() => first.dispose())
+    const starting = first.start()
+    try {
+      // The source read has finished, but its first HTTP validation is still pending.
+      // A later instance receives a cached lease and must not interpret it as trusted.
+      await firstSeen
+      const second = await runtime(discovery)
+      expect(second.getState().status).toBe('unauthorized')
+      expect(source).toHaveBeenCalledTimes(1)
+      expect(modelsCalls).toBe(2)
+    } finally {
+      releaseFirst()
+      await starting
+    }
+    expect(first.getState().status).toBe('unauthorized')
+    expect(source).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves cancelled authorization across runtime replacement and retries only manually', async () => {
+    const { fixture, baseURL } = await gateway()
+    let granted = false
+    const source = vi.fn(async (): Promise<CredentialSourceResult> => granted
+      ? { ok: true, key: fixture.key }
+      : { ok: false, code: 'credential-denied', message: '请允许系统授权。' })
+    const discovery = sharedDiscovery(baseURL, source)
+    expect((await runtime(discovery)).getState().status).toBe('credential-denied')
+    const replacement = await runtime(discovery)
+    await replacement.refresh(false)
+    expect(source).toHaveBeenCalledTimes(1)
+    granted = true
+    expect((await replacement.refresh()).status).toBe('connected')
+    expect(source).toHaveBeenCalledTimes(2)
+  })
+
+  it('performs only one source reread when multiple runtimes observe the same rotated key', async () => {
+    const { fixture, baseURL } = await gateway()
+    const source = vi.fn(async (): Promise<CredentialSourceResult> => ({ ok: true, key: fixture.key }))
+    const discovery = sharedDiscovery(baseURL, source)
+    const [first, second] = await Promise.all([runtime(discovery), runtime(discovery)])
+    fixture.key = 'rotated-shared-key'
+    const states = await Promise.all([first.refresh(false), second.refresh(false)])
+    expect(states.map(state => state.status)).toEqual(['connected', 'connected'])
+    expect(source).toHaveBeenCalledTimes(2)
+  })
+
   it('connects without input, caches only in memory and never changes the default at startup', async () => {
     const { fixture, baseURL } = await gateway()
     const chosen = selection(), dir = await directory()
@@ -171,7 +281,7 @@ describe('automatic runtime', () => {
     const value = await runtime(discovery)
     expect(value.getState().status).toBe('unauthorized')
     await value.refresh(false); await value.refresh(false)
-    expect(discovery).toHaveBeenCalledTimes(2)
+    expect(discovery).toHaveBeenCalledTimes(1)
     discovery.mockResolvedValue({ baseURL, apiKey: fixture.key })
     expect((await value.refresh()).status).toBe('connected')
   })

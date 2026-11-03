@@ -77,8 +77,8 @@ export function ToolkitCard({ api = defaultApi }: { api?: ToolkitApi }) {
   let helper = '用于新会话，已有会话在会话内切换。'
   if (busy) helper = pending === null ? '正在重新检测 AI-Toolkit…' : '正在保存新会话默认模型…'
   else if (actionError || loadError) helper = actionError ?? loadError!
-  else if (state === null || state.status === 'detecting') helper = '正在自动检测 AI-Toolkit…首次访问时请允许系统凭据授权。'
-  else if (state.status === 'credential-denied') helper = '请允许系统凭据授权，再点击下拉框重新检测。'
+  else if (state === null || state.status === 'detecting') helper = '正在自动检测 AI-Toolkit…如出现系统授权弹窗，请处理后等待，无需重复点击。'
+  else if (state.status === 'credential-denied') helper = '请允许系统凭据授权；取消后已暂停自动重试，点击下拉框可重新授权。'
   else if (state.status === 'missing') helper = '请安装并打开 AI-Toolkit，开启本地代理。点击下拉框重新检测。'
   else if (state.status === 'offline') helper = '请打开 AI-Toolkit 并开启本地代理。点击下拉框重新检测。'
   else if (state.status === 'unauthorized') helper = '代理密钥已失效，请在 AI-Toolkit 中检查代理。点击下拉框重新检测。'

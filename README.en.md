@@ -54,11 +54,14 @@ The plugin queries only proxy port settings from the current user's `~/.ai-toolk
 
 - When AI-Toolkit is missing or its proxy is offline, the dropdown remains keyboard-focusable and shows recovery guidance plus a download link. Click it to retry discovery.
 - Denied credential authorization pauses automatic authorization retries. Allow access, then click the dropdown to retry; background checks do not repeatedly prompt.
+- Installation, activation, and hot reload share one in-flight credential read across plugin instances in the same Harness host process. Successful reads and cancelled/denied outcomes survive those instance replacements. After cancellation or denial, only an explicit dropdown retry resumes the read. The proxy key stays in process memory, with no additional keychain copy, and is released when the host process exits.
 - Models come from the existing `GET /v1/models` endpoint. The host synchronizes every 30 seconds while connected and checks for recovery after failures. The UI reads host state every five seconds.
-- HTTP 503, timeouts, and temporary port-metadata failures retain an established connection's in-memory key without repeatedly accessing the credential store. While the endpoint is unchanged, only HTTP 401 triggers one automatic credential re-read. If that read or authentication still fails, automatic credential retries pause until the dropdown is clicked explicitly.
+- HTTP 503, timeouts, and temporary port-metadata failures retain the in-memory key. A changed port first validates the existing proxy key. Model-catalog HTTP 401 coalesces one source re-read for a rejected generation that previously authenticated; an initial key that has not yet authenticated pauses immediately without another authorization. Failed recovery stays paused until an explicit dropdown retry.
 - Selection resolves the exact model using DSH's public API, saves it through the default-model service, and verifies it by reading the Host's default back. Missing host services, invalid models, and ineffective saves are reported as failures.
 
 The plugin does not modify AI-Toolkit source, account records, or proxy configuration, and never invokes credential writes or deletion for AI-Toolkit entries. SQLite uses a read-only connection with `query_only`; WAL mode may maintain existing shared-memory indexes. Discovery stops if required WAL sidecars are missing, rather than creating or repairing them.
+
+This prevents duplicate plugin requests, not every possible OS prompt. A real host-process restart, locked keychain, key rotation, or changed application identity may require authorization again. Legacy chunk records may also require separate item permissions.
 
 ## Installation and development
 
@@ -75,7 +78,7 @@ npm pack
 Enter the generated tarball's absolute path in DSH's **Plugins → Add plugin**, then install and enable it. Alternatively, use the official CLI:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.3.tgz
+dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.4.tgz
 ```
 
 The Electron `desktop` profile is managed by the desktop application; install through its plugin UI. `npm run preview` starts an isolated component preview with mock state, without real accounts or model calls. The settings UI is Chinese-first.

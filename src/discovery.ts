@@ -1,8 +1,9 @@
 import { lstat, open } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { createLoopbackFetch } from './http.js'
+import { readSharedCredential, type CredentialLease } from './credential-session.js'
 
 const CREDENTIAL_SERVICE = 'com.ai-toolkit.credits'
 const GATEWAY_ACCOUNT = 'gateway-api-key'
@@ -12,7 +13,7 @@ const CHUNK_PREFIX = 'ait-secret-v1:'
 const MAX_CHUNKS = 128
 const CHUNK_BYTES = 2000
 
-export type DiscoveryErrorCode = 'missing' | 'offline' | 'credential-denied' | 'unsupported'
+export type DiscoveryErrorCode = 'missing' | 'offline' | 'credential-denied' | 'unsupported' | 'unauthorized'
 
 /** Only static messages cross into the UI; native errors can contain secret data. */
 export class DiscoveryError extends Error {
@@ -22,9 +23,10 @@ export class DiscoveryError extends Error {
   }
 }
 
-export interface DiscoveredConnection { baseURL: string; apiKey: string }
+export interface DiscoveredConnection { baseURL: string; apiKey: string; credential?: CredentialLease }
+export interface CredentialRequest { retry?: boolean; rejectedCredential?: CredentialLease }
 
-export interface DiscoveryOptions {
+export interface DiscoveryOptions extends CredentialRequest {
   /** Test seam: production always uses the current OS user's home directory. */
   homeDirectory?: string
   platform?: NodeJS.Platform
@@ -172,7 +174,10 @@ async function nativeReader(platform: NodeJS.Platform): Promise<NonNullable<Disc
       // THIRD_PARTY_NOTICES.md, "Read-only credential discovery audit".
       const entry = new AsyncEntry(CREDENTIAL_SERVICE, account,
         platform === 'linux' ? { linux: { store: 'secret-service' } } : undefined)
-      const bytes = await entry.getSecret(AbortSignal.timeout(30_000))
+      // A native macOS authorization dialog can outlive a JS abort. Keep its
+      // shared promise pending until the user answers instead of queuing a new
+      // authorization after a synthetic timeout during installation/HMR.
+      const bytes = await entry.getSecret(platform === 'darwin' ? undefined : AbortSignal.timeout(30_000))
       return bytes === null ? null : Uint8Array.from(bytes)
     }
   } catch {
@@ -234,6 +239,19 @@ export async function discover(options: DiscoveryOptions = {}): Promise<Discover
     if (error instanceof DiscoveryError) throw error
     throw new DiscoveryError('offline', 'AI-Toolkit 本地代理未运行，请打开 AI-Toolkit 并开启代理。')
   }
-  const read = options.readSecret ?? await nativeReader(platform)
-  return { baseURL, apiKey: await readGatewayKey(platform, read) }
+  const scope = JSON.stringify([platform, resolve(options.homeDirectory ?? homedir(), '.ai-toolkit'), CREDENTIAL_SERVICE, GATEWAY_ACCOUNT])
+  const result = await readSharedCredential(scope, async () => {
+    try {
+      const read = options.readSecret ?? await nativeReader(platform)
+      return { ok: true, key: await readGatewayKey(platform, read) }
+    } catch (error) {
+      if (error instanceof DiscoveryError) return { ok: false, code: error.code === 'offline' ? 'credential-denied' : error.code, message: error.message }
+      return { ok: false, code: 'credential-denied', message: '无法读取 AI-Toolkit 代理密钥，请允许系统凭据授权后重试。' }
+    }
+  }, {
+    retry: options.retry,
+    rejectedGeneration: options.rejectedCredential?.scope === scope ? options.rejectedCredential.generation : undefined,
+  })
+  if (!result.ok) throw new DiscoveryError(result.code, result.message)
+  return { baseURL, apiKey: result.key, credential: { scope, generation: result.generation, fresh: result.fresh } }
 }

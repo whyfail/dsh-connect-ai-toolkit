@@ -75,7 +75,7 @@ describe('read-only AI-Toolkit discovery', () => {
     const before = await readFile(path)
     const entries = await readdir(join(home, '.ai-toolkit'))
     const readSecret = secretReader({ vault: 'ait-vault-v1:' + JSON.stringify({ 'gateway-api-key': 'ait_synthetic_proxy_key', 'platform-account': 'never-return-this-fixture' }) })
-    expect(await discover({ homeDirectory: home, platform: 'darwin', readSecret, probe })).toEqual({ baseURL: 'http://127.0.0.1:19876/v1', apiKey: 'ait_synthetic_proxy_key' })
+    expect(await discover({ homeDirectory: home, platform: 'darwin', readSecret, probe })).toMatchObject({ baseURL: 'http://127.0.0.1:19876/v1', apiKey: 'ait_synthetic_proxy_key' })
     expect(readSecret.mock.calls).toEqual([['vault']])
     expect(await readFile(path)).toEqual(before)
     expect(await readdir(join(home, '.ai-toolkit'))).toEqual(entries)
@@ -84,7 +84,61 @@ describe('read-only AI-Toolkit discovery', () => {
   it('supports the unprefixed shared vault and the source default port when no row exists', async () => {
     const { home } = await fixture(null)
     const readSecret = secretReader({ vault: JSON.stringify({ 'gateway-api-key': 'ait_synthetic_default' }) })
-    expect(await discover({ homeDirectory: home, platform: 'darwin', readSecret, probe })).toEqual({ baseURL: 'http://127.0.0.1:17860/v1', apiKey: 'ait_synthetic_default' })
+    expect(await discover({ homeDirectory: home, platform: 'darwin', readSecret, probe })).toMatchObject({ baseURL: 'http://127.0.0.1:17860/v1', apiKey: 'ait_synthetic_default' })
+  })
+
+  it('coalesces the native vault read across concurrent discoveries and module reload', async () => {
+    const { home } = await fixture()
+    let finish!: (value: number[]) => void
+    native.read.mockImplementation(() => new Promise<number[]>(resolve => { finish = resolve }))
+    const first = discover({ homeDirectory: home, platform: 'darwin', probe })
+    await vi.waitFor(() => expect(native.read).toHaveBeenCalledTimes(1))
+    vi.resetModules()
+    const reloaded = await import('../src/discovery.js')
+    const second = reloaded.discover({ homeDirectory: home, platform: 'darwin', probe })
+    finish(Array.from(Buffer.from(JSON.stringify({ 'gateway-api-key': 'ait_one_prompt_fixture' }))))
+    const values = await Promise.all([first, second])
+    expect(values.map(value => value.apiKey)).toEqual(['ait_one_prompt_fixture', 'ait_one_prompt_fixture'])
+    expect(values[0]?.credential?.generation).toBe(values[1]?.credential?.generation)
+    expect(native.read).toHaveBeenCalledTimes(1)
+    expect(native.write).not.toHaveBeenCalled()
+  })
+
+  it('keeps denied authorization paused for new discoveries until an explicit retry', async () => {
+    const { home } = await fixture()
+    const options = { homeDirectory: home, platform: 'darwin' as const, probe }
+    native.read.mockRejectedValue(new Error('cancelled synthetic_private_detail'))
+    await expect(discover(options)).rejects.toMatchObject({ code: 'credential-denied' })
+    vi.resetModules()
+    const reloaded = await import('../src/discovery.js')
+    await expect(reloaded.discover(options)).rejects.toMatchObject({ code: 'credential-denied' })
+    expect(native.read).toHaveBeenCalledTimes(1)
+    native.read.mockResolvedValue(Array.from(Buffer.from(JSON.stringify({ 'gateway-api-key': 'ait_retry_fixture' }))))
+    expect((await reloaded.discover({ ...options, retry: true })).apiKey).toBe('ait_retry_fixture')
+    expect(native.read).toHaveBeenCalledTimes(2)
+  })
+
+  it('rereads a changed port without requesting the same source credential again', async () => {
+    const { home, path } = await fixture()
+    const readSecret = secretReader({ vault: JSON.stringify({ 'gateway-api-key': 'ait_same_gateway_key' }) })
+    const options = { homeDirectory: home, platform: 'darwin' as const, readSecret, probe }
+    await discover(options)
+    const database = new DatabaseSync(path)
+    database.prepare('UPDATE credit_proxy_settings SET settings=? WHERE id=1').run(JSON.stringify({ port: 23456 }))
+    database.close()
+    expect((await discover(options)).baseURL).toBe('http://127.0.0.1:23456/v1')
+    expect(readSecret).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not repeatedly authorize the shared vault when its proxy entry is missing', async () => {
+    const { home } = await fixture()
+    const readSecret = secretReader({ vault: '{}' })
+    const options = { homeDirectory: home, platform: 'darwin' as const, readSecret, probe }
+    await expect(discover(options)).rejects.toMatchObject({ code: 'missing' })
+    await expect(discover(options)).rejects.toMatchObject({ code: 'missing' })
+    expect(readSecret.mock.calls).toEqual([['vault'], ['gateway-api-key']])
+    await expect(discover({ ...options, retry: true })).rejects.toMatchObject({ code: 'missing' })
+    expect(readSecret).toHaveBeenCalledTimes(4)
   })
 
   it('reconstructs Windows raw UTF-8 secret chunks without reading a shared vault or other accounts', async () => {
@@ -169,7 +223,7 @@ describe('read-only AI-Toolkit discovery', () => {
     const generation = '2ba62309-a74a-4c43-83eb-19b6c3ac977f'
     for (const value of [undefined, 'x'.repeat(2001)]) {
       const readSecret = secretReader({ 'gateway-api-key': `ait-secret-v1:${generation}:1`, ...(value === undefined ? {} : { [`gateway-api-key/${generation}/0`]: value }) })
-      await expect(discover({ homeDirectory: home, platform: 'win32', readSecret, probe })).rejects.toMatchObject({ code: 'credential-denied' })
+      await expect(discover({ homeDirectory: home, platform: 'win32', readSecret, probe, retry: true })).rejects.toMatchObject({ code: 'credential-denied' })
       expect(readSecret).toHaveBeenCalledTimes(2)
     }
   })

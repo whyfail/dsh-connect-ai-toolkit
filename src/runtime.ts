@@ -1,17 +1,19 @@
 import { ConfigStore, pluginDirectory } from './config.ts'
-import { discover, discoverBaseURL, DiscoveryError, type DiscoveredConnection } from './discovery.ts'
+import { discover, discoverBaseURL, DiscoveryError, type CredentialRequest, type DiscoveredConnection } from './discovery.ts'
+import { canRecoverSharedCredential, confirmSharedCredential, rejectSharedCredential, type CredentialLease } from './credential-session.ts'
 import { fetchModels, GatewayError, normalizeBaseURL } from './http.ts'
 import { defaultSettings, PROVIDER_ID, type ModelSelection, type PluginSettings, type PublicState } from './shared.ts'
 
 /** Automatic connection metadata and keys are private and never serialized. */
 export class ToolkitRuntime {
   private readonly store: ConfigStore
-  private readonly discover: () => Promise<DiscoveredConnection>
+  private readonly discover: (request?: CredentialRequest) => Promise<DiscoveredConnection>
   private readonly resolveAddress: () => Promise<string>
   private readonly selection?: ModelSelection
   private settings = defaultSettings()
   private state: PublicState = { models: [], status: 'detecting', selectedModelId: null, canSelect: false, lastSyncAt: null, error: null }
   private key: string | null = null
+  private credential?: CredentialLease
   private credentialBlocked = false
   private listeners = new Set<() => void>()
   private pending: Promise<unknown> = Promise.resolve()
@@ -20,7 +22,7 @@ export class ToolkitRuntime {
   private controller?: AbortController
   private stopped = false
 
-  constructor(options: { directory?: string; discover?: () => Promise<DiscoveredConnection>; resolveAddress?: () => Promise<string>; selection?: ModelSelection } = {}) {
+  constructor(options: { directory?: string; discover?: (request?: CredentialRequest) => Promise<DiscoveredConnection>; resolveAddress?: () => Promise<string>; selection?: ModelSelection } = {}) {
     this.store = new ConfigStore(options.directory ?? pluginDirectory())
     this.discover = options.discover ?? discover
     this.resolveAddress = options.resolveAddress ?? (options.discover ? async () => this.settings.baseURL : discoverBaseURL)
@@ -68,6 +70,7 @@ export class ToolkitRuntime {
     if (this.timer) clearTimeout(this.timer)
     this.controller?.abort()
     this.key = null
+    this.credential = undefined
     this.listeners.clear()
   }
   async getApiKey(expectedBaseURL?: string): Promise<string> {
@@ -82,11 +85,11 @@ export class ToolkitRuntime {
     void task.finally(() => { if (this.refreshing === task) this.refreshing = undefined }).catch(() => {})
     return task
   }
-  private async detect(): Promise<void> {
+  private async detect(request: CredentialRequest = {}): Promise<void> {
     if (this.stopped) return
     this.state.status = 'detecting'
     this.emit()
-    const connection = await this.discover()
+    const connection = await this.discover(request)
     if (this.stopped) return
     const baseURL = normalizeBaseURL(connection.baseURL)
     if (typeof connection.apiKey !== 'string' || !/^[\x21-\x7e]{1,8192}$/.test(connection.apiKey)) {
@@ -95,6 +98,7 @@ export class ToolkitRuntime {
     if (baseURL !== this.settings.baseURL) this.state.models = []
     this.settings = { ...this.settings, baseURL }
     this.key = connection.apiKey
+    this.credential = connection.credential
   }
   private async performRefresh(manual: boolean): Promise<PublicState> {
     // A denied OS authorization is retried only when the user focuses/clicks the dropdown.
@@ -104,12 +108,16 @@ export class ToolkitRuntime {
     this.state.error = null
     this.emit()
     try {
+      const hadKey = this.key !== null
       if (this.key) {
         const currentAddress = normalizeBaseURL(await this.resolveAddress())
         if (this.stopped) return this.getState()
-        if (currentAddress !== this.settings.baseURL) this.key = null
+        if (currentAddress !== this.settings.baseURL) {
+          this.settings = { ...this.settings, baseURL: currentAddress }
+          this.state.models = []
+        }
       }
-      if (!this.key) await this.detect()
+      if (!this.key) await this.detect({ retry: manual })
       if (this.stopped) return this.getState()
       this.controller = new AbortController()
       let models
@@ -117,12 +125,17 @@ export class ToolkitRuntime {
       catch (error) {
         // Only directory reads recover a local key rotation; inference is never replayed.
         if (!(error instanceof GatewayError) || error.status !== 401) throw error
+        // Another instance can receive a cached source key before the first
+        // instance finishes authentication. Only validated generations recover.
+        if (this.credential ? !canRecoverSharedCredential(this.credential) : !hadKey) throw error
+        const rejectedCredential = this.credential
         this.key = null
-        await this.detect()
+        await this.detect({ retry: manual, rejectedCredential })
         if (this.stopped) return this.getState()
         models = await fetchModels(this.settings.baseURL, this.key!, this.controller.signal)
       }
       if (this.stopped) return this.getState()
+      if (this.credential) confirmSharedCredential(this.credential)
       this.state.models = models
       this.state.lastSyncAt = Date.now()
       this.state.status = 'connected'
@@ -132,10 +145,11 @@ export class ToolkitRuntime {
         if (error.code === 'credential-denied' || error.code === 'unsupported') this.key = null
         this.state.status = error.code
         this.state.error = error.message
-        this.credentialBlocked = error.code === 'credential-denied'
+        this.credentialBlocked = error.code === 'credential-denied' || error.code === 'unauthorized'
       } else {
         this.state.status = error instanceof GatewayError && error.status === 401 ? 'unauthorized' : 'offline'
         if (this.state.status === 'unauthorized') {
+          if (this.credential) rejectSharedCredential(this.credential)
           this.key = null
           this.credentialBlocked = true
         }
