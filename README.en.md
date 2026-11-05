@@ -78,7 +78,7 @@ npm pack
 Enter the generated tarball's absolute path in DSH's **Plugins → Add plugin**, then install and enable it. Alternatively, use the official CLI:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.4.tgz
+dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.5.tgz
 ```
 
 The Electron `desktop` profile is managed by the desktop application; install through its plugin UI. `npm run preview` starts an isolated component preview with mock state, without real accounts or model calls. The settings UI is Chinese-first.

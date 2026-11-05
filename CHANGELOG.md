@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.5 — 2026-11-05
+
+### Fixes
+
+- Read `context_window` and `max_output_tokens` from AI-Toolkit's model catalog and use them for Harness and SDK token budgeting. A declared 1M MiniMax context no longer uses the 32K fallback that could reduce long-conversation output to one token.
+- Keep context and output capacities separate, preserve explicit per-model overrides, and retain the existing defaults when the proxy omits a field.
+- Preserve capacity metadata in the legacy model cache and ignore invalid capacity values.
+
+### Validation
+
+- Pass types, 105 automated tests, host/client builds, and package installation checks.
+- Reproduce one-token truncation with a long input, verify recovery with a declared 1M context, and preserve genuine truncation when callers explicitly request one output token.
+- Validate the local MiniMax workaround in an existing macOS Harness conversation: 1,270 output tokens and normal completion. Automatic capacity discovery requires an AI-Toolkit build exposing the new catalog fields.
+
 ## 0.2.4 — 2026-11-03
 
 ### Fixes
