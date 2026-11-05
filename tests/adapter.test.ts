@@ -130,6 +130,45 @@ describe('AI-Toolkit PiAiAdapter', () => {
     expect(output.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
   })
 
+  it('uses the real catalog context so a long MiniMax conversation is not clamped to one output token', async () => {
+    const sent: Record<string, unknown>[] = []
+    const baseURL = await gateway(async (req, res) => {
+      const parts: Buffer[] = []
+      for await (const part of req) parts.push(Buffer.from(part))
+      sent.push(JSON.parse(Buffer.concat(parts).toString()))
+      const truncated = sent.at(-1)?.max_tokens === 1
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.end(sse([chunk(truncated ? {} : { content: 'complete' }), chunk({}, truncated ? 'length' : 'stop')]))
+    })
+    const id = 'minimax-code/MiniMax-M3.1-Flash'
+    const source = runtime(baseURL, [id])
+    const { adapter, invalidate } = createToolkitAdapter({ runtime: source })
+    const longRequest = { ...request(id), messages: [createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'x'.repeat(105_000) }] })] }
+    expect((await collect(adapter.stream(longRequest))).at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'max-tokens' } })
+    expect(sent.at(-1)?.max_tokens).toBe(1)
+
+    const state = source.getState()
+    source.getState = () => ({ ...state, models: [{ ...state.models[0], contextWindow: 1_000_000 }] })
+    invalidate()
+    expect((await adapter.resolveModel(PROVIDER_ID, id)).context?.contextWindow).toBe(1_000_000)
+    expect((await collect(adapter.stream(longRequest))).at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
+    expect(sent.at(-1)?.max_tokens).toBe(4096)
+    // A caller's deliberate cap remains authoritative, and a real truncation remains visible.
+    expect((await collect(adapter.stream({ ...longRequest, maxTokens: 1 }))).at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'max-tokens' } })
+    expect(sent.at(-1)?.max_tokens).toBe(1)
+  })
+
+  it('uses declared output capacity while preserving explicit per-model client overrides', async () => {
+    const source = runtime('http://127.0.0.1:17860/v1', ['qoder/x'])
+    const state = source.getState()
+    source.getState = () => ({ ...state, models: [{ ...state.models[0], contextWindow: 1_000_000, maxOutputTokens: 32_768 }] })
+    const { adapter, invalidate } = createToolkitAdapter({ runtime: source })
+    expect(await adapter.resolveModel(PROVIDER_ID, 'qoder/x')).toMatchObject({ context: { contextWindow: 1_000_000 }, defaultMaxTokens: 32_768 })
+    source.settings.overrides['qoder/x'] = { contextWindow: 65536, maxTokens: 2048 }
+    invalidate()
+    expect(await adapter.resolveModel(PROVIDER_ID, 'qoder/x')).toMatchObject({ context: { contextWindow: 65536 }, defaultMaxTokens: 2048 })
+  })
+
   it('preserves fragmented tool calls and the matching tool result on the next request', async () => {
     const sent: Record<string, unknown>[] = []
     const baseURL = await gateway(async (req, res) => {

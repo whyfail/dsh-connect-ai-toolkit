@@ -87,7 +87,7 @@ The Electron `desktop` profile is managed by the desktop application; install th
 
 Inference uses AI-Toolkit's OpenAI Chat Completions proxy, including streaming and DSH tool calls. AI-Toolkit owns platform account routing and actual model permissions. Catalog discovery is not proof of inference or tool compatibility.
 
-The existing catalog does not expose credit balances, price multipliers, or complete capabilities, so the plugin does not display or infer them. Explicit client defaults are 32,768 context tokens and 4,096 output tokens, with image input disabled. This version has no budget/capability editor; internal compatibility logic preserves older budgets where applicable.
+The plugin reads `context_window` and `max_output_tokens` from the proxy catalog and passes them to Harness and the SDK. A declared 1M MiniMax Code context therefore uses 1M for client budgeting rather than a fixed 32K. Context capacity never substitutes for an unknown output limit. Missing fields independently fall back to 32,768 context tokens and 4,096 output tokens; image input remains disabled. Explicit legacy per-model budgets take precedence, while other legacy budgets serve as fallbacks. This version has no budget/capability editor and does not infer balances, prices, or other absent metadata.
 
 Automatic discovery depends on supported AI-Toolkit data formats and OS credential backends. macOS reads the proxy entry from its shared record; Windows/Linux support its proxy record and chunk layout without enumerating platform accounts. See [validation notes](docs/VALIDATION.md) for the exact scope of real-platform testing.
 

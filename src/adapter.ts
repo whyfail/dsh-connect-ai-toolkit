@@ -73,8 +73,8 @@ export function createToolkitAdapter(options: {
         baseUrl: settings.baseURL,
         input: override?.images === true ? ['text', 'image'] : ['text'],
         reasoning: false,
-        contextWindow: override?.contextWindow ?? settings.contextWindow,
-        maxTokens: override?.maxTokens ?? settings.maxTokens,
+        contextWindow: override?.contextWindow ?? info.contextWindow ?? settings.contextWindow,
+        maxTokens: override?.maxTokens ?? info.maxOutputTokens ?? settings.maxTokens,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         compat: {
           supportsStore: true,

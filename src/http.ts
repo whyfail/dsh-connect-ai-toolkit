@@ -51,11 +51,14 @@ export function parseModels(payload: unknown): GatewayModel[] {
     if (typeof row.id !== 'string' || !row.id.trim() || row.id.length > 1024 || /[\u0000-\u001f\u007f]/.test(row.id)) {
       throw new GatewayError('invalid_model_catalog', '模型目录包含无效 ID。')
     }
+    const capacity = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
     // ID remains byte-for-byte unchanged, including platform prefixes and auto aliases.
     models.set(row.id, {
       id: row.id,
       name: typeof row.name === 'string' && row.name.trim() ? row.name : row.id,
       source: typeof row.owned_by === 'string' && row.owned_by ? row.owned_by : 'unknown',
+      ...(capacity(row.context_window) ? { contextWindow: row.context_window } : {}),
+      ...(capacity(row.max_output_tokens) ? { maxOutputTokens: row.max_output_tokens } : {}),
     })
   }
   return [...models.values()]

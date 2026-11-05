@@ -47,7 +47,7 @@ export class ConfigStore {
       const value = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
       if (value.version !== 1) throw new Error('插件配置版本不兼容。')
       const settings = validateSettings(value.settings)
-      const models = Array.isArray(value.models) ? parseModels({ data: value.models.map((m: GatewayModel) => ({ id: m.id, name: m.name, owned_by: m.source })) }) : []
+      const models = Array.isArray(value.models) ? parseModels({ data: value.models.map((m: GatewayModel) => ({ id: m.id, name: m.name, owned_by: m.source, context_window: m.contextWindow, max_output_tokens: m.maxOutputTokens })) }) : []
       return { version: 1, settings, models, lastSyncAt: typeof value.lastSyncAt === 'number' && Number.isFinite(value.lastSyncAt) ? value.lastSyncAt : null, rememberKey: value.rememberKey !== false }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback
@@ -61,7 +61,7 @@ export class ConfigStore {
     const path = join(this.directory, 'config.json')
     const temporary = join(this.directory, `.config-${randomUUID()}.tmp`)
     try {
-      const safe = { version: 1, settings: validateSettings(value.settings), models: value.models.map(({ id, name, source }) => ({ id, name, source })), lastSyncAt: value.lastSyncAt, rememberKey: value.rememberKey === true }
+      const safe = { version: 1, settings: validateSettings(value.settings), models: value.models.map(({ id, name, source, contextWindow, maxOutputTokens }) => ({ id, name, source, contextWindow, maxOutputTokens })), lastSyncAt: value.lastSyncAt, rememberKey: value.rememberKey === true }
       await writeFile(temporary, `${JSON.stringify(safe, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
       await rename(temporary, path)
     } finally { await unlink(temporary).catch(() => {}) }

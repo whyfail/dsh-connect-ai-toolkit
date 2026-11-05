@@ -23,6 +23,8 @@ export interface GatewayModel {
   id: string
   name: string
   source: string
+  contextWindow?: number
+  maxOutputTokens?: number
 }
 export type ConnectionStatus = 'detecting' | 'connected' | 'missing' | 'offline' | 'credential-denied' | 'unsupported' | 'unauthorized'
 export interface PublicState {

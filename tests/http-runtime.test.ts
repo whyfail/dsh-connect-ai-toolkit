@@ -70,6 +70,17 @@ describe('proxy boundary', () => {
     expect(() => parseModels({ data: [{ id: 'valid' }, { id: '' }] })).toThrow()
     expect(parseModels({ data: [] })).toEqual([])
   })
+  it('keeps positive catalog capacities without turning a context window into an output limit', () => {
+    expect(parseModels({ data: [{ id: 'minimax-code/MiniMax-M3', context_window: 1_000_000, max_output_tokens: null }] })[0])
+      .toEqual({ id: 'minimax-code/MiniMax-M3', name: 'minimax-code/MiniMax-M3', source: 'unknown', contextWindow: 1_000_000 })
+    expect(parseModels({ data: [{ id: 'qoder/x', context_window: 1_000_000, max_output_tokens: 32768 }] })[0])
+      .toMatchObject({ contextWindow: 1_000_000, maxOutputTokens: 32768 })
+    for (const invalid of [0, -1, 1.5, '1000000', Number.MAX_SAFE_INTEGER + 1]) {
+      const model = parseModels({ data: [{ id: 'x', context_window: invalid, max_output_tokens: invalid }] })[0]
+      expect(model).not.toHaveProperty('contextWindow')
+      expect(model).not.toHaveProperty('maxOutputTokens')
+    }
+  })
 })
 
 describe('automatic runtime', () => {
@@ -335,6 +346,12 @@ describe('automatic runtime', () => {
     const value = await runtime(async () => ({ baseURL, apiKey: fixture.key }), selection(), dir)
     expect(value.getSettings().baseURL).toBe(baseURL)
     expect(await readFile(join(dir, 'config.json'), 'utf8')).toBe(before)
+  })
+  it('round-trips declared catalog capacities in the legacy cache without adding missing limits', async () => {
+    const store = new ConfigStore(await directory())
+    const models = parseModels({ data: [{ id: 'minimax-code/MiniMax-M3', context_window: 1_000_000 }, { id: 'qoder/x', context_window: 1_000_000, max_output_tokens: 32768 }] })
+    await store.save({ version: 1, settings: defaultSettings(), models, lastSyncAt: null })
+    expect((await store.load()).models).toEqual(models)
   })
   it('does not follow a real redirect during discovery', async () => {
     const destination = await gateway()
