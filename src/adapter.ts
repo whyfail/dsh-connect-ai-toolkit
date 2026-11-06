@@ -107,6 +107,8 @@ export function createToolkitAdapter(options: {
       baseURL: settings.baseURL,
       streamIdleTimeoutMs: 300_000,
       maxRequestImageBytes: 20_971_520,
+      maxRequestImages: 50,
+      imageOffloadCountQuantum: 10,
       requestImagePixelBudget: 4_194_304,
       requestImageMaxBytes: 1_048_576,
       retryPolicy: resolveRetryPolicy({ mode: 'normal', maxRetries: 0 }, 'AI-Toolkit retry policy'),

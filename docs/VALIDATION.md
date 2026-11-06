@@ -1,4 +1,18 @@
-# v0.2.4 验证记录
+# 验证记录
+
+## v0.2.6：DSH 0.2.2-rc.1 兼容升级（2026-11-06）
+
+本机桌面运行时为 DSH 0.2.2-rc.1、Cordis 4.1.0、Schemastery 3.19.0、pi-ai 1.3.0。旧版插件的 DSH peers 仅接受 0.2.1-rc.3 / rc.5，新版宿主会将其标记为不兼容。v0.2.6 明确加入当前 DSH 与配套库的版本范围，开发依赖固定到本机运行时版本；不使用兼容性豁免，也不放开未经验证的 DSH 版本。
+
+新版 `ResolvedPiAiProviderProfile` 新增 `maxRequestImages` 与 `imageOffloadCountQuantum` 必填项，插件按 SDK 默认值补充 50 / 10。模型注册、流式响应、工具调用、图片、Token 预算、默认模型保存桥及 HTTP 权限的现有回归均通过。
+
+- `npm run check`：类型检查、**111 项测试**与宿主／浏览器构建通过，基于 nvmd Node.js 24.21.0。
+- 新增 6 项真实 `evaluatePluginCompatibility` 检查：接受三个声明支持的版本，拒绝未验证的 0.2.1-rc.4、0.2.2-rc.2 与 0.3.0。
+- 安装包分别在独立临时目录安装 DSH 0.2.1-rc.3、0.2.1-rc.5 与 0.2.2-rc.1；宿主入口导入、浏览器模块包装、图标及真实兼容性判定通过。
+
+安装包检查默认使用当前版本；旧版可执行 `DSH_TEST_VERSION=0.2.1-rc.3 npm run test:package` 或 `DSH_TEST_VERSION=0.2.1-rc.5 npm run test:package`。这些检查不代表三平台账号的真实推理验收。
+
+## v0.2.4 验证基线
 
 验证日期：2026-11-03。开发环境：macOS Apple Silicon、nvmd Node.js 24.21.0；自动化基线 DSH 0.2.1-rc.5，本机桌面应用 DSH 0.2.1-rc.3。
 

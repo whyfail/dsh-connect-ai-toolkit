@@ -6,7 +6,7 @@
 
 ## 一键安装
 
-兼容 **DSH 0.2.1-rc.3 / 0.2.1-rc.5**。先安装桌面版 Harness 并至少打开一次，执行命令前**完全退出 Harness**。
+兼容 **DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1**。先安装桌面版 Harness 并至少打开一次，执行命令前**完全退出 Harness**。
 
 ### macOS 桌面版：复制一条命令
 
@@ -80,7 +80,7 @@ npm pack
 在 DSH“插件 → 添加插件”中填写生成压缩包的绝对路径，安装并启用；或使用官方 CLI：
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.5.tgz
+dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.6.tgz
 ```
 
 Electron 桌面的 `desktop` profile 由桌面应用管理，请通过桌面插件界面安装。`npm run preview` 是使用模拟数据的独立组件预览，不读取真实账号或产生模型调用。

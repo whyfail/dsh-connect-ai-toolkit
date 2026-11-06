@@ -6,7 +6,7 @@ Connect **WorkBuddy, TRAE / TRAE CN, and Qoder** models to DeepSeek Harness thro
 
 ## One-command installation
 
-Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5**. Run the desktop app at least once, then **fully quit Harness** before installing.
+Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1**. Run the desktop app at least once, then **fully quit Harness** before installing.
 
 macOS, with the app in `/Applications`:
 
@@ -65,7 +65,7 @@ This prevents duplicate plugin requests, not every possible OS prompt. A real ho
 
 ## Installation and development
 
-Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5** with **Node.js 24.9 through 24.x**. Source and local npm tarball installation are provided; these instructions do not assume a published npm package.
+Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1** with **Node.js 24.9 through 24.x**. Source and local npm tarball installation are provided; these instructions do not assume a published npm package.
 
 ```sh
 git clone https://github.com/whyfail/dsh-connect-ai-toolkit.git
@@ -78,7 +78,7 @@ npm pack
 Enter the generated tarball's absolute path in DSH's **Plugins → Add plugin**, then install and enable it. Alternatively, use the official CLI:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.5.tgz
+dsh plugin --profile web add /absolute/path/dsh-connect-ai-toolkit-0.2.6.tgz
 ```
 
 The Electron `desktop` profile is managed by the desktop application; install through its plugin UI. `npm run preview` starts an isolated component preview with mock state, without real accounts or model calls. The settings UI is Chinese-first.

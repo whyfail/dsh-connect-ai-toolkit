@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.6 — 2026-11-06
+
+### Fixes
+
+- Support DSH 0.2.2-rc.1, Cordis 4.1 and Schemastery 3.19 while retaining the declared DSH 0.2.1-rc.3 / rc.5 compatibility.
+- Supply the image count and offload defaults required by the new PiAi adapter profile.
+- Pin the development SDK to the current desktop runtime and check distributables against each supported DSH version without compatibility exemptions.
+
+### Validation
+
+- Pass types, 111 automated tests and host/client builds against DSH 0.2.2-rc.1 and pi-ai 1.3.0.
+- Independently install and import the tarball with DSH 0.2.1-rc.3, 0.2.1-rc.5 and 0.2.2-rc.1; verify the real Harness compatibility gate accepts each version.
+
 ## 0.2.5 — 2026-11-05
 
 ### Fixes
