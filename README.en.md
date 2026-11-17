@@ -4,9 +4,17 @@ Connect **WorkBuddy, TRAE / TRAE CN, and Qoder** models to DeepSeek Harness thro
 
 [中文](README.md) · [Download AI-Toolkit](https://github.com/whyfail/AI-Toolkit/releases/latest) · [Reference plugin](https://github.com/dingminhua/dsh-connect-workbuddy)
 
+## What's new in v0.2.6
+
+- Show declared credit rates and confirmed promotions in the settings card and conversation model picker.
+- Expose catalog reasoning levels, map TRAE tier names onto host levels, and send each tier's original platform name upstream.
+- Use catalog context and output capacities for token budgets, fixing one-token truncation caused by missing capacity metadata in long conversations.
+- Read AI-Toolkit's private gateway-key mirror before the system credential store to reduce repeated authorization after app updates.
+- Support DSH 0.2.1-rc.3, rc.5 and 0.2.2-rc.1, rc.2, rc.3, paired with AI-Toolkit 2.2.6. See the [Changelog](CHANGELOG.md) for details and known limitations.
+
 ## One-command installation
 
-Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1**. Run the desktop app at least once, then **fully quit Harness** before installing.
+Supports **DSH 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1 / 0.2.2-rc.2 / 0.2.2-rc.3**. Run the desktop app at least once, then **fully quit Harness** before installing.
 
 macOS, with the app in `/Applications`:
 
@@ -54,14 +62,16 @@ The plugin queries only proxy port settings from the current user's `~/.ai-toolk
 
 - When AI-Toolkit is missing or its proxy is offline, the dropdown remains keyboard-focusable and shows recovery guidance plus a download link. Click it to retry discovery.
 - Denied credential authorization pauses automatic authorization retries. Allow access, then click the dropdown to retry; background checks do not repeatedly prompt.
-- Installation, activation, and hot reload share one in-flight credential read across plugin instances in the same Harness host process. Successful reads and cancelled/denied outcomes survive those instance replacements. After cancellation or denial, only an explicit dropdown retry resumes the read. The proxy key stays in process memory, with no additional keychain copy, and is released when the host process exits.
+- Installation, activation, and hot reload share one in-flight credential read across plugin instances in the same Harness host process. Successful reads and cancelled/denied outcomes survive those instance replacements. After cancellation or denial, only an explicit dropdown retry resumes the read. The plugin adds no keychain copy; the read result stays in process memory and is released when the host process exits.
 - Models come from the existing `GET /v1/models` endpoint. The host synchronizes every 30 seconds while connected and checks for recovery after failures. The UI reads host state every five seconds.
 - HTTP 503, timeouts, and temporary port-metadata failures retain the in-memory key. A changed port first validates the existing proxy key. Model-catalog HTTP 401 coalesces one source re-read for a rejected generation that previously authenticated; an initial key that has not yet authenticated pauses immediately without another authorization. Failed recovery stays paused until an explicit dropdown retry.
 - Selection resolves the exact model using DSH's public API, saves it through the default-model service, and verifies it by reading the Host's default back. Missing host services, invalid models, and ineffective saves are reported as failures.
 
 The plugin does not modify AI-Toolkit source, account records, or proxy configuration, and never invokes credential writes or deletion for AI-Toolkit entries. SQLite uses a read-only connection with `query_only`; WAL mode may maintain existing shared-memory indexes. Discovery stops if required WAL sidecars are missing, rather than creating or repairing them.
 
-This prevents duplicate plugin requests, not every possible OS prompt. A real host-process restart, locked keychain, key rotation, or changed application identity may require authorization again. Legacy chunk records may also require separate item permissions.
+AI-Toolkit also mirrors the proxy key to `~/.ai-toolkit/gateway-key` (current user only, mode `0600`, replaced atomically). The plugin reads this file first to reduce Keychain prompts after AI-Toolkit reinstalls, updates, or rebuilds. A missing file uses the credential-store flow above. Unsafe file types, ownership, or permissions produce an explicit error. Older AI-Toolkit builds use the system credential flow.
+
+That coalescing prevents duplicate plugin reads, not every possible OS prompt. When the Keychain fallback is used, a real host-process restart, locked keychain, key rotation, or changed application identity may still require authorization, and legacy chunk records may require separate item permissions.
 
 ## Installation and development
 
@@ -87,7 +97,7 @@ The Electron `desktop` profile is managed by the desktop application; install th
 
 Inference uses AI-Toolkit's OpenAI Chat Completions proxy, including streaming and DSH tool calls. AI-Toolkit owns platform account routing and actual model permissions. Catalog discovery is not proof of inference or tool compatibility.
 
-The plugin reads `context_window` and `max_output_tokens` from the proxy catalog and passes them to Harness and the SDK. A declared 1M MiniMax Code context therefore uses 1M for client budgeting rather than a fixed 32K. Context capacity never substitutes for an unknown output limit. Missing fields independently fall back to 32,768 context tokens and 4,096 output tokens; image input remains disabled. Explicit legacy per-model budgets take precedence, while other legacy budgets serve as fallbacks. This version has no budget/capability editor and does not infer balances, prices, or other absent metadata.
+The plugin reads `context_window` and `max_output_tokens` from the proxy catalog and passes them to Harness and the SDK. A declared 1M MiniMax Code context therefore uses 1M for client budgeting rather than a fixed 32K. Context capacity never substitutes for an unknown output limit. Missing fields independently fall back to 32,768 context tokens and 4,096 output tokens; image input remains disabled. Explicit legacy per-model budgets take precedence, while other legacy budgets serve as fallbacks. Model options keep the exact ID, source and credit rate. The rate comes from the proxy catalog's `credit_rate` and follows AI-Toolkit's display rules, including active limited-time promotions; an undeclared rate shows as unknown rather than 1×. The conversation model picker shows the same rate badge, and a model that declares reasoning levels also offers them there; the chosen level travels to the proxy as `reasoning_effort`, and levels the catalog does not declare are never offered. A platform that spells its tiers differently is mapped onto the host levels (TRAE's `light`/`extra_high` show as low/xhigh) while the value sent upstream stays the platform's own word. This version has no budget/capability editor and still does not show balances or infer prices the catalog does not declare.
 
 Automatic discovery depends on supported AI-Toolkit data formats and OS credential backends. macOS reads the proxy entry from its shared record; Windows/Linux support its proxy record and chunk layout without enumerating platform accounts. See [validation notes](docs/VALIDATION.md) for the exact scope of real-platform testing.
 

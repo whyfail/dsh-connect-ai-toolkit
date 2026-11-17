@@ -1,17 +1,37 @@
 # Changelog
 
-## 0.2.6 — 2026-11-06
+## 0.2.6 — 2026-11-17
 
-### Fixes
+### Features
 
-- Support DSH 0.2.2-rc.1, Cordis 4.1 and Schemastery 3.19 while retaining the declared DSH 0.2.1-rc.3 / rc.5 compatibility.
-- Supply the image count and offload defaults required by the new PiAi adapter profile.
-- Pin the development SDK to the current desktop runtime and check distributables against each supported DSH version without compatibility exemptions.
+- Show platform credit rates in the default-model dropdown, selected-model card, and conversation model picker. The model badge includes the current discount when its declared schedule is active, with daily windows, time zones, priorities, and discount factors handled by the shared formatter.
+- Offer reasoning levels declared by the gateway catalog. TRAE's `light` and `extra_high` map to the host's low and xhigh levels, and the selected effort reaches the gateway using the platform's original spelling.
+- Extend catalog parsing and configuration serialization with `credit_rate`, `supports_reasoning`, and `reasoning_effort_options`. Unknown rates display as “倍率未知”, and models with switch-only or unrecognized reasoning options have no level selector.
+
+### Fixes and Improvements
+
+- Use `context_window` and `max_output_tokens` from the catalog for Harness and SDK token budgets. A MiniMax model advertising a 1M context gets that capacity, resolving the small-context fallback that could reduce long-conversation output to one token. Explicit per-model budgets remain authoritative, with separate defaults for missing context and output limits.
+- Read AI-Toolkit's private gateway key file at `~/.ai-toolkit/gateway-key` before the system credential store. A valid private file avoids repeated Keychain authorization after an AI-Toolkit rebuild. Discovery checks file type, ownership, and permissions, reports unsafe files, and uses the credential store when the file is absent.
+- Keep file-based discovery inside the shared credential lease. Source-key recovery after HTTP 401 remains limited to an authenticated generation, and denied access pauses until an explicit dropdown retry.
+- Supply the current PiAi adapter profile's image count and offload defaults, `maxRequestImages=50` and `imageOffloadCountQuantum=10`.
+- Update the macOS CI runner to macOS 15 for the current build checks.
+
+### Compatibility
+
+- Support DSH `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, and `0.2.2-rc.3`, with the development SDK pinned to `0.2.2-rc.3`, Cordis 4.1.0, Schemastery 3.19.0, and pi-ai 1.3.0.
+- Pair with AI-Toolkit 2.2.6 for catalog credit rates, reasoning declarations, TRAE effort forwarding, and the private key file. Node.js `>=24.9.0 <25` is required.
 
 ### Validation
 
-- Pass types, 111 automated tests and host/client builds against DSH 0.2.2-rc.1 and pi-ai 1.3.0.
-- Independently install and import the tarball with DSH 0.2.1-rc.3, 0.2.1-rc.5 and 0.2.2-rc.1; verify the real Harness compatibility gate accepts each version.
+- Type checking, 125 automated tests, and host/browser builds passed on nvmd Node.js 24.21.0. Coverage includes rates, promotion windows, reasoning mappings and request bodies, catalog limits, private key discovery, and the compatibility gate.
+- The v0.2.6 tarball passed independent installation, host entry import, browser module wrapper, icon and compatibility checks across all five supported DSH versions. The package validation record is in `docs/VALIDATION.md`.
+- The recorded MiniMax long-conversation check completed with 28,838 input tokens and 1,270 output tokens. The recorded TRAE probe accepted all tested effort values, including an invalid value, with comparable thinking lengths. Level availability follows the platform catalog.
+
+### Known Limitations
+
+- Runtime catalog persistence requires wiring configuration serialization into refresh saves and startup restoration. Offline restarts currently begin with an empty model list.
+- Legacy WorkBuddy rate text such as `x0.18 credits` still displays as unknown when its numeric multiplier is absent. A catalog containing the normalized numeric multiplier displays the rate.
+- AI-Toolkit's multi-account metadata aggregation can depend on account order when one account lacks a declaration, affecting the route's advertised rates and reasoning fields.
 
 ## 0.2.5 — 2026-11-05
 
