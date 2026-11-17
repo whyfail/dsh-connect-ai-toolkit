@@ -81,6 +81,21 @@ describe('proxy boundary', () => {
       expect(model).not.toHaveProperty('maxOutputTokens')
     }
   })
+  it('keeps a declared credit rate and ignores invalid rate payloads', () => {
+    expect(parseModels({ data: [{ id: 'workbuddy/glm-5.3-flash', credit_rate: { multiplier: 0.6, source: 'enterprise-models/v3-config', promotions: [{ id: 'night', discountedCredits: 0.3 }] } }] })[0])
+      .toMatchObject({ creditRate: { multiplier: 0.6, promotions: [{ id: 'night', discountedCredits: 0.3 }] } })
+    for (const invalid of [null, '0.6x', [0.6], 0.6]) {
+      expect(parseModels({ data: [{ id: 'x', credit_rate: invalid }] })[0]).not.toHaveProperty('creditRate')
+    }
+  })
+
+  it('keeps declared reasoning efforts only when they are usable', () => {
+    expect(parseModels({ data: [{ id: 'qoder/auto', supports_reasoning: true, reasoning_effort_options: [' High ', 'low', 'high', 7] }] })[0])
+      .toMatchObject({ supportsReasoning: true, reasoningEffortOptions: ['high', 'low'] })
+    for (const invalid of [null, 'high', [], {}, [null, '']]) {
+      expect(parseModels({ data: [{ id: 'y', reasoning_effort_options: invalid }] })[0]).not.toHaveProperty('reasoningEffortOptions')
+    }
+  })
 })
 
 describe('automatic runtime', () => {
@@ -349,7 +364,7 @@ describe('automatic runtime', () => {
   })
   it('round-trips declared catalog capacities in the legacy cache without adding missing limits', async () => {
     const store = new ConfigStore(await directory())
-    const models = parseModels({ data: [{ id: 'minimax-code/MiniMax-M3', context_window: 1_000_000 }, { id: 'qoder/x', context_window: 1_000_000, max_output_tokens: 32768 }] })
+    const models = parseModels({ data: [{ id: 'minimax-code/MiniMax-M3', context_window: 1_000_000, supports_reasoning: true, reasoning_effort_options: ['low', 'high'], credit_rate: { multiplier: 0.6 } }, { id: 'qoder/x', context_window: 1_000_000, max_output_tokens: 32768 }] })
     await store.save({ version: 1, settings: defaultSettings(), models, lastSyncAt: null })
     expect((await store.load()).models).toEqual(models)
   })

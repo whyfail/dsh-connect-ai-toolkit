@@ -19,12 +19,41 @@ export interface PluginSettings {
   maxTokens: number
   overrides: Record<string, ModelOverride>
 }
+export interface CreditTimeWindow {
+  startMinute?: number | null
+  endMinute?: number | null
+}
+export interface CreditPromotion {
+  id?: string | null
+  kind?: string | null
+  discountedCredits?: number | null
+  discountFactor?: number | null
+  priority?: number | null
+  startsAt?: number | null
+  endsAt?: number | null
+  dailyStartMinute?: number | null
+  dailyEndMinute?: number | null
+  timezoneOffsetSeconds?: number | null
+  timezone?: string | null
+  dailyWindows?: CreditTimeWindow[] | null
+  enabled?: boolean | null
+}
+/** Platform-declared credit rate, displayed with the same rules as AI-Toolkit. */
+export interface CreditRate {
+  declaredText?: string | null
+  multiplier?: number | null
+  promotions?: CreditPromotion[] | null
+  source?: string | null
+}
 export interface GatewayModel {
   id: string
   name: string
   source: string
   contextWindow?: number
   maxOutputTokens?: number
+  supportsReasoning?: boolean
+  reasoningEffortOptions?: string[]
+  creditRate?: CreditRate
 }
 export type ConnectionStatus = 'detecting' | 'connected' | 'missing' | 'offline' | 'credential-denied' | 'unsupported' | 'unauthorized'
 export interface PublicState {

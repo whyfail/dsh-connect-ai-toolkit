@@ -2,7 +2,7 @@ import { createServer, type RequestListener, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createAssistantMessage, createToolResultMessage, createUserMessage, LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createAssistantMessage, createToolResultMessage, createUserMessage, LlmAdapter, ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { AttachmentId, ImageVariantId, type AttachmentStore, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { createToolkitAdapter, gatewayFetch, type AdapterRuntime } from '../src/adapter.js'
@@ -101,6 +101,70 @@ describe('AI-Toolkit PiAiAdapter', () => {
     expect(changed.context?.contextWindow).toBe(65536)
     expect(changed.defaultMaxTokens).toBe(2048)
     expect(changed.inputModalities).toEqual(['text', 'image'])
+  })
+
+  it('advertises declared rates and reasoning efforts, and forwards the chosen effort', async () => {
+    const models = [
+      { id: 'qoder/auto', name: 'Qoder Auto', source: 'qoder', creditRate: { multiplier: 0.5, source: 'qoder' }, supportsReasoning: true, reasoningEffortOptions: ['low', 'high'], defaultReasoningEffort: 'high' },
+      { id: 'minimax-code/MiniMax-M3', name: 'MiniMax M3', source: 'minimax-code' },
+    ]
+    let sent: Record<string, unknown> = {}
+    const baseURL = await gateway(async (req, res) => {
+      const parts: Buffer[] = []
+      for await (const part of req) parts.push(Buffer.from(part))
+      sent = JSON.parse(Buffer.concat(parts).toString())
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.end(sse([chunk({ content: 'ok' }), { ...chunk({}, 'stop'), usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]))
+    })
+    const settings = { ...defaultSettings(), baseURL }
+    const source: AdapterRuntime = {
+      getSettings: () => structuredClone(settings),
+      getState: () => ({ models, status: 'connected', selectedModelId: null, canSelect: true, lastSyncAt: null, error: null } as PublicState),
+      getApiKey: async () => 'synthetic-proxy-key',
+    }
+    const { adapter } = createToolkitAdapter({ runtime: source })
+    // The picker renders the badge, so a declared rate must survive listing.
+    expect((await adapter.listModels(PROVIDER_ID)).map(model => model.badge)).toEqual([
+      { text: '0.5×', tone: 'neutral' },
+      { text: '倍率未知', tone: 'neutral' },
+    ])
+    // Declared efforts become the host selector; undeclared models keep none.
+    const info = await adapter.resolveModel(PROVIDER_ID, 'qoder/auto')
+    // Only declared levels are offered; undeclared ones would be sent verbatim.
+    expect(info.reasoning?.efforts.map(effort => effort.id)).toEqual(['low', 'high'])
+    expect((await adapter.resolveModel(PROVIDER_ID, 'minimax-code/MiniMax-M3')).reasoning).toBeUndefined()
+    await collect(adapter.stream({ ...request('qoder/auto'), reasoningEffort: ReasoningEffortId('high') }))
+    expect(sent.reasoning_effort).toBe('high')
+  })
+
+  it('maps platform tier names onto host levels and sends the platform word', async () => {
+    const models = [
+      { id: 'traework/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', source: 'traework', supportsReasoning: true, reasoningEffortOptions: ['light', 'high', 'extra_high'] },
+      { id: 'minimax-code/MiniMax-M3', name: 'MiniMax M3', source: 'minimax-code', reasoningEffortOptions: ['off', 'on'] },
+    ]
+    let sent: Record<string, unknown> = {}
+    const baseURL = await gateway(async (req, res) => {
+      const parts: Buffer[] = []
+      for await (const part of req) parts.push(Buffer.from(part))
+      sent = JSON.parse(Buffer.concat(parts).toString())
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.end(sse([chunk({ content: 'ok' })]))
+    })
+    const settings = { ...defaultSettings(), baseURL }
+    const { adapter } = createToolkitAdapter({
+      runtime: {
+        getSettings: () => structuredClone(settings),
+        getState: () => ({ models, status: 'connected', selectedModelId: null, canSelect: true, lastSyncAt: null, error: null } as PublicState),
+        getApiKey: async () => 'synthetic-proxy-key',
+      },
+    })
+    const info = await adapter.resolveModel(PROVIDER_ID, 'traework/deepseek-v4.1-flash')
+    // TRAE spells the tiers light/high/extra_high; the host offers low/high/xhigh.
+    expect(info.reasoning?.efforts.map(effort => effort.id)).toEqual(['low', 'high', 'xhigh'])
+    // A toggle vocabulary is not a tier ladder, so no selector is offered.
+    expect((await adapter.resolveModel(PROVIDER_ID, 'minimax-code/MiniMax-M3')).reasoning).toBeUndefined()
+    await collect(adapter.stream({ ...request('traework/deepseek-v4.1-flash'), reasoningEffort: ReasoningEffortId('xhigh') }))
+    expect(sent.reasoning_effort).toBe('extra_high')
   })
 
   it('streams text, reasoning and usage without requesting a reasoning effort', async () => {

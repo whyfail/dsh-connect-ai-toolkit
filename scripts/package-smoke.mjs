@@ -9,8 +9,8 @@ import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 
 const root = resolve(import.meta.dirname, '..')
 const { name, version, peerDependencies } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const sdkVersion = process.env.DSH_TEST_VERSION ?? '0.2.2-rc.1'
-assert.ok(['0.2.1-rc.3', '0.2.1-rc.5', '0.2.2-rc.1'].includes(sdkVersion), 'Select a supported SDK version')
+const sdkVersion = process.env.DSH_TEST_VERSION ?? '0.2.2-rc.3'
+assert.ok(['0.2.1-rc.3', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.2', '0.2.2-rc.3'].includes(sdkVersion), 'Select a supported SDK version')
 const directory = await mkdtemp(join(tmpdir(), 'dsh-toolkit-package-'))
 try {
   // Install the actual distributable with its declared peers, without running lifecycle scripts.

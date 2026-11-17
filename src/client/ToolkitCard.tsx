@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { formatCreditRate } from '../rate.ts'
 import { DOWNLOAD_URL, type PublicState } from '../shared.ts'
 import { createHttpApi, type ToolkitApi } from './api.ts'
 import { toolkitStyles } from './styles.ts'
@@ -94,7 +95,7 @@ export function ToolkitCard({ api = defaultApi }: { api?: ToolkitApi }) {
   const hasError = Boolean(failed || actionError || loadError)
   const statusLabel = detecting ? (pending ? '保存中' : '检测中') : hasError ? (state?.status === 'credential-denied' ? '待授权' : showDownload ? '待开启' : '需检查') : connected ? '已连接' : '待连接'
   const modelTitle = model?.name || (selected ? selected : connected ? '选择一个模型' : detecting ? '正在连接 AI-Toolkit' : '等待代理连接')
-  const modelDetail = model ? `${sourceNames.get(model.source) ?? model.source} · ${model.id}` : selected ? '当前模型不可用，请重新选择' : connected ? '自动同步全部可用模型' : '打开 AI-Toolkit 并开启本地代理'
+  const modelDetail = model ? `${sourceNames.get(model.source) ?? model.source} · ${model.id} · ${formatCreditRate(model.creditRate)}` : selected ? '当前模型不可用，请重新选择' : connected ? '自动同步全部可用模型' : '打开 AI-Toolkit 并开启本地代理'
 
   return <div className="ait-card" data-tone={hasError ? 'warning' : connected && !detecting ? 'success' : 'waiting'} data-busy={detecting}>
     <style>{toolkitStyles}</style>
@@ -115,7 +116,7 @@ export function ToolkitCard({ api = defaultApi }: { api?: ToolkitApi }) {
         <select id={id} className="ait-select" value={selected} aria-describedby={helperId} aria-busy={detecting} onFocus={retryIfNeeded} onPointerDown={retryIfNeeded} onChange={(event) => { if (ready && event.target.value) void perform('select', event.target.value) }}>
           <option value="" disabled>{connected ? '选择 AI-Toolkit 模型' : '等待 AI-Toolkit 代理连接'}</option>
           {unavailableSelection ? <option value={state.selectedModelId!} disabled>{state.selectedModelId}（当前不可用）</option> : null}
-          {state?.models.map((model) => <option key={model.id} value={model.id} disabled={!ready}>{sourceNames.get(model.source) ?? model.source} · {model.name === model.id ? model.id : `${model.name} (${model.id})`}</option>)}
+          {state?.models.map((model) => <option key={model.id} value={model.id} disabled={!ready}>{sourceNames.get(model.source) ?? model.source} · {model.name === model.id ? model.id : `${model.name} (${model.id})`} · {formatCreditRate(model.creditRate)}</option>)}
         </select>
       </div>
     </div>

@@ -9,7 +9,7 @@ import { type PublicState } from '../src/shared.ts'
 const connected = (): PublicState => ({
   status: 'connected', selectedModelId: null, canSelect: true, lastSyncAt: 1_700_000_000_000, error: null,
   models: [
-    { id: 'workbuddy/model-a', name: 'Model A', source: 'workbuddy' },
+    { id: 'workbuddy/model-a', name: 'Model A', source: 'workbuddy', creditRate: { multiplier: 0.6 } },
     { id: 'qoder/model-b', name: 'Model B', source: 'qoder' },
   ],
 })
@@ -47,9 +47,11 @@ describe('single model selector', () => {
     expect(option.textContent).toContain('Model A')
     expect(option.textContent).toContain('WorkBuddy')
     expect(option.textContent).toContain('workbuddy/model-a')
+    expect(option.textContent).toContain('0.6×')
     await act(async () => { choose('qoder/model-b') })
     expect(api.selectModel).toHaveBeenCalledWith('qoder/model-b')
     expect(selector().value).toBe('qoder/model-b')
+    expect(document.querySelector('.ait-model-id')?.textContent).toBe('Qoder · qoder/model-b · 倍率未知')
     expect(document.body.textContent).toContain('用于新会话，已有会话在会话内切换。')
     expect(api.refresh).not.toHaveBeenCalled()
   })

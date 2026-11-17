@@ -12,6 +12,8 @@ const VAULT_PREFIX = 'ait-vault-v1:'
 const CHUNK_PREFIX = 'ait-secret-v1:'
 const MAX_CHUNKS = 128
 const CHUNK_BYTES = 2000
+const KEY_FILE = 'gateway-key'
+const KEY_MAX_BYTES = 8192
 
 export type DiscoveryErrorCode = 'missing' | 'offline' | 'credential-denied' | 'unsupported' | 'unauthorized'
 
@@ -135,6 +137,46 @@ function validateKey(value: unknown): string {
   return value
 }
 
+/**
+ * AI-Toolkit mirrors the proxy key into its private data directory. macOS binds
+ * Keychain authorization to the app's code signing identity, so every rebuilt
+ * app has to ask again; the mirror lets local clients skip the Keychain.
+ */
+async function readMirroredKey(platform: NodeJS.Platform, homeDirectory: string): Promise<string | null> {
+  const path = join(homeDirectory, '.ai-toolkit', KEY_FILE)
+  let info
+  try { info = await lstat(path) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new DiscoveryError('credential-denied', '无法只读访问 AI-Toolkit 代理密钥文件。')
+  }
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw new DiscoveryError('credential-denied', 'AI-Toolkit 代理密钥文件路径不可安全读取。')
+  }
+  // The mirror is trustworthy only while it stays private to this user.
+  if (platform !== 'win32'
+    && ((info.mode & 0o077) !== 0 || (typeof process.getuid === 'function' && info.uid !== process.getuid()))) {
+    throw new DiscoveryError('credential-denied', 'AI-Toolkit 代理密钥文件权限不安全，请在 AI-Toolkit 中重新开启本地代理。')
+  }
+  let file
+  try { file = await open(path, 'r') } catch {
+    throw new DiscoveryError('credential-denied', '无法只读访问 AI-Toolkit 代理密钥文件。')
+  }
+  try {
+    const buffer = Buffer.alloc(KEY_MAX_BYTES + 1)
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
+    if (bytesRead > KEY_MAX_BYTES) throw new DiscoveryError('credential-denied', 'AI-Toolkit 代理密钥文件内容无效。')
+    return validateKey(buffer.subarray(0, bytesRead).toString('utf8').trim())
+  } finally {
+    await file.close()
+  }
+}
+
+async function loadGatewayKey(platform: NodeJS.Platform, homeDirectory: string, readSecret: DiscoveryOptions['readSecret']): Promise<string> {
+  const mirrored = await readMirroredKey(platform, homeDirectory)
+  if (mirrored !== null) return mirrored
+  return readGatewayKey(platform, readSecret ?? await nativeReader(platform))
+}
+
 function validGeneration(value: string): boolean {
   const unwrapped = value.startsWith('{') && value.endsWith('}') ? value.slice(1, -1) : value
   return /^(?:[\da-f]{32}|[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})$/i.test(unwrapped)
@@ -239,11 +281,11 @@ export async function discover(options: DiscoveryOptions = {}): Promise<Discover
     if (error instanceof DiscoveryError) throw error
     throw new DiscoveryError('offline', 'AI-Toolkit 本地代理未运行，请打开 AI-Toolkit 并开启代理。')
   }
-  const scope = JSON.stringify([platform, resolve(options.homeDirectory ?? homedir(), '.ai-toolkit'), CREDENTIAL_SERVICE, GATEWAY_ACCOUNT])
+  const home = options.homeDirectory ?? homedir()
+  const scope = JSON.stringify([platform, resolve(home, '.ai-toolkit'), CREDENTIAL_SERVICE, GATEWAY_ACCOUNT])
   const result = await readSharedCredential(scope, async () => {
     try {
-      const read = options.readSecret ?? await nativeReader(platform)
-      return { ok: true, key: await readGatewayKey(platform, read) }
+      return { ok: true, key: await loadGatewayKey(platform, home, options.readSecret) }
     } catch (error) {
       if (error instanceof DiscoveryError) return { ok: false, code: error.code === 'offline' ? 'credential-denied' : error.code, message: error.message }
       return { ok: false, code: 'credential-denied', message: '无法读取 AI-Toolkit 代理密钥，请允许系统凭据授权后重试。' }

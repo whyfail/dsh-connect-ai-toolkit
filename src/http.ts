@@ -1,4 +1,4 @@
-import type { GatewayModel } from './shared.ts'
+import type { CreditRate, GatewayModel } from './shared.ts'
 
 export class GatewayError extends Error {
   constructor(public readonly code: string, message: string, public readonly status?: number) {
@@ -52,6 +52,14 @@ export function parseModels(payload: unknown): GatewayModel[] {
       throw new GatewayError('invalid_model_catalog', '模型目录包含无效 ID。')
     }
     const capacity = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    // A missing or null rate means the proxy could not confirm one; it is never
+    // treated as 1×. Invalid rate payloads are ignored rather than failing the catalog.
+    const rate = row.credit_rate
+    // Declared reasoning support is optional and unconfirmed when absent; an empty
+    // or malformed list must leave the model without a reasoning selector.
+    const efforts = Array.isArray(row.reasoning_effort_options)
+      ? [...new Set(row.reasoning_effort_options.filter((value): value is string => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 32).map(value => value.trim().toLowerCase()))]
+      : []
     // ID remains byte-for-byte unchanged, including platform prefixes and auto aliases.
     models.set(row.id, {
       id: row.id,
@@ -59,6 +67,9 @@ export function parseModels(payload: unknown): GatewayModel[] {
       source: typeof row.owned_by === 'string' && row.owned_by ? row.owned_by : 'unknown',
       ...(capacity(row.context_window) ? { contextWindow: row.context_window } : {}),
       ...(capacity(row.max_output_tokens) ? { maxOutputTokens: row.max_output_tokens } : {}),
+      ...(typeof rate === 'object' && rate !== null && !Array.isArray(rate) ? { creditRate: rate as CreditRate } : {}),
+      ...(typeof row.supports_reasoning === 'boolean' ? { supportsReasoning: row.supports_reasoning } : {}),
+      ...(efforts.length > 0 ? { reasoningEffortOptions: efforts } : {}),
     })
   }
   return [...models.values()]

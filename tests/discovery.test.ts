@@ -87,6 +87,36 @@ describe('read-only AI-Toolkit discovery', () => {
     expect(await discover({ homeDirectory: home, platform: 'darwin', readSecret, probe })).toMatchObject({ baseURL: 'http://127.0.0.1:17860/v1', apiKey: 'ait_synthetic_default' })
   })
 
+  it('reads the private key mirror without asking the credential store', async () => {
+    const { home } = await fixture()
+    await writeFile(join(home, '.ai-toolkit', 'gateway-key'), 'ait_synthetic_mirror', { mode: 0o600 })
+    const readSecret = secretReader({ vault: 'ait-vault-v1:' + JSON.stringify({ 'gateway-api-key': 'ait_vault_fixture' }) })
+    expect((await discover({ homeDirectory: home, platform: process.platform, readSecret, probe })).apiKey).toBe('ait_synthetic_mirror')
+    expect(readSecret).not.toHaveBeenCalled()
+    expect(native.construct).not.toHaveBeenCalled()
+    expect(native.read).not.toHaveBeenCalled()
+  })
+
+  it('rejects a key mirror other users can read instead of trusting it', async () => {
+    const { home } = await fixture()
+    await writeFile(join(home, '.ai-toolkit', 'gateway-key'), 'ait_synthetic_mirror', { mode: 0o644 })
+    const readSecret = secretReader({})
+    await expect(discover({ homeDirectory: home, platform: 'darwin', readSecret, probe }))
+      .rejects.toMatchObject({ code: 'credential-denied' })
+    expect(readSecret).not.toHaveBeenCalled()
+  })
+
+  it('rejects a symlinked key mirror and still falls back to the vault when it is absent', async () => {
+    const { home } = await fixture()
+    const target = join(home, 'elsewhere')
+    await writeFile(target, 'ait_synthetic_mirror', { mode: 0o600 })
+    await symlink(target, join(home, '.ai-toolkit', 'gateway-key'))
+    const readSecret = secretReader({})
+    await expect(discover({ homeDirectory: home, platform: 'darwin', readSecret, probe }))
+      .rejects.toMatchObject({ code: 'credential-denied' })
+    expect(readSecret).not.toHaveBeenCalled()
+  })
+
   it('coalesces the native vault read across concurrent discoveries and module reload', async () => {
     const { home } = await fixture()
     let finish!: (value: number[]) => void
